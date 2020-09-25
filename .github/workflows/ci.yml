@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+    pull_request:
+
+jobs:
+  ci:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        php: ['7.4']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          coverage: "none"
+          extensions: "json,xsl"
+          ini-values: "memory_limit=-1"
+          php-version: "${{ matrix.php }}"
+          tools: flex,pecl
+
+      - name: Install Composer
+        run: wget -qO - https://raw.githubusercontent.com/composer/getcomposer.org/fb22b78362d31c0d2bf516d1f8cdfd2745caa431/web/installer | php -- --install-dir=/usr/local/bin --filename=composer --quiet
+
+      - name: Cache composer dependencies
+        uses: actions/cache@v1
+        with:
+          path: ~/.composer/cache
+          key: composer-php${{ matrix.php }}-${{ github.sha }}
+          restore-keys: |
+            composer-php${{ matrix.php }}-
+            composer-
+        continue-on-error: true
+
+      - name: Install dependencies
+        run: composer update --no-progress --no-suggest --ansi
+
+      - name: Run Doctrine schema validate analysis
+        run: bin/console doctrine:schema:validate --skip-sync
+
+      - name: Run PHP CS analysis
+        run: vendor/bin/php-cs-fixer fix --dry-run --ansi --verbose
+
+      - name: Run PHPStan analysis
+        run: vendor/bin/phpstan analyse -c phpstan.neon -l5 --ansi src
+
+      - name: Run PHP Code Sniffer
+        run: vendor/bin/phpcs --ignore=/tests
+
+      - name: Run Symfony security check
+        uses: symfonycorp/security-checker-action@v2
